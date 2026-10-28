@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 // Decorative canvas: it never receives focus or intercepts dashboard controls.
-export default function ParticleNetwork() {
+export default function ParticleNetwork({ maxParticles = 72 }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -25,7 +25,7 @@ export default function ParticleNetwork() {
       canvas.width = Math.round(width * ratio);
       canvas.height = Math.round(height * ratio);
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      const count = Math.min(72, Math.max(24, Math.round(width * height / 9000)));
+      const count = Math.min(maxParticles, Math.max(24, Math.round(width * height / 9000)));
       particles = Array.from({ length: count }, () => ({
         x: Math.random() * width,
         y: Math.random() * height,
@@ -107,7 +107,7 @@ export default function ParticleNetwork() {
       motion.removeEventListener('change', syncAnimation);
       document.removeEventListener('visibilitychange', syncAnimation);
     };
-  }, []);
+  }, [maxParticles]);
 
   return <canvas ref={canvasRef} className="particle-network" aria-hidden="true" />;
 }

@@ -49,15 +49,14 @@ function LoginPage() {
 
   return (
     <div className="login-page">
+      <ParticleNetwork maxParticles={120} />
       <section className="login-brand-panel">
-        <ParticleNetwork />
         <div className="login-brand"><span className="inka-brand-mark"><Icon name="shield" size={20}/></span><span className="inka-brand-word">Inka<span>Sec</span></span></div>
         <div className="login-message"><span className="eyebrow">CAPACITACIÓN QUE SE CONVIERTE EN HÁBITO</span><h1>Seguridad digital, <em>sin complicaciones.</em></h1><p>Aprende a reconocer riesgos reales, practica con escenarios breves y fortalece la seguridad de tu organización.</p></div>
         <div className="login-trust"><div><Icon name="lock" size={18}/><span><strong>Acceso protegido</strong><small>Sesión corporativa y 2FA para roles críticos</small></span></div><div><Icon name="shield" size={18}/><span><strong>Privacidad por diseño</strong><small>El navegador no almacena tokens de producción</small></span></div></div>
       </section>
 
       <section className="login-form-panel">
-        <ParticleNetwork />
         <div className="login-card">
           {step === 'credentials' ? (
             <form onSubmit={submitCredentials}>
