@@ -635,8 +635,17 @@ function ManagerCreateModal({ onClose, onCreated }) {
 }
 
 function AdminCreateUserModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ name: '', email: '', area: 'Finanzas', role: 'worker' }); const [busy, setBusy] = useState(false); const [error, setError] = useState('');
-  async function submit(e) { e.preventDefault(); setBusy(true); setError(''); try { const item = await api.admin.createUser(form); onCreated(item); onClose(); } catch (err) { setError(err.message); } finally { setBusy(false); } }
+  const [form, setForm] = useState({ name: '', email: '', area: 'Finanzas', role: 'worker' }); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [created, setCreated] = useState(null);
+  async function submit(e) {
+    e.preventDefault(); setBusy(true); setError('');
+    try {
+      const { temporary_password, totp_setup_secret, ...user } = await api.admin.createUser(form);
+      onCreated(user);
+      setCreated({ email: user.email, temporary_password, totp_setup_secret });
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+  if (created) return <Modal title="Usuario creado" onClose={onClose}><div className="created-user-credentials"><p>Guarda estos datos ahora y entrégalos al usuario por un canal seguro. Se muestran una sola vez.</p><div><strong>Correo</strong><code>{created.email}</code></div><div><strong>Contraseña inicial</strong><code>{created.temporary_password}</code></div>{created.totp_setup_secret && <div><strong>Secreto para configurar 2FA</strong><code>{created.totp_setup_secret}</code><small>El usuario debe agregar este secreto a su aplicación de autenticación antes de iniciar sesión.</small></div>}<div className="modal-actions"><button type="button" className="btn btn-primary" onClick={onClose}>Ya guardé los datos</button></div></div></Modal>;
   return <Modal title="Crear usuario" onClose={onClose}><form className="modal-form" onSubmit={submit}><label>Nombre completo<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required maxLength={120}/></label><label>Correo corporativo<input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required/></label><div className="form-grid"><label>Área<select value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}><option>Finanzas</option><option>Ventas</option><option>RR. HH.</option><option>Logística</option><option>Tecnología</option></select></label><label>Rol<select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}><option value="worker">Trabajador</option><option value="manager">Gestor</option><option value="admin">Administrador</option></select></label></div><p className="form-note">Los roles Gestor y Administrador deberán completar 2FA antes de acceder al panel.</p>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Creando…' : 'Crear usuario'}</button></div></form></Modal>;
 }
 
