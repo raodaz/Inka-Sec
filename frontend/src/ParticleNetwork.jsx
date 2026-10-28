@@ -109,5 +109,5 @@ export default function ParticleNetwork() {
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="admin-particle-network" aria-hidden="true" />;
+  return <canvas ref={canvasRef} className="particle-network" aria-hidden="true" />;
 }
