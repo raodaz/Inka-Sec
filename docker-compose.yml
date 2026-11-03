@@ -4,7 +4,10 @@ services:
     environment:
       POSTGRES_DB: inkasec
       POSTGRES_USER: inkasec
-      POSTGRES_PASSWORD: inkasec
+      POSTGRES_PASSWORD: ${INKASEC_DB_PASSWORD:?Configura INKASEC_DB_PASSWORD en el .env de la raiz}
+
+    ports:
+      - "127.0.0.1:5433:5432"
 
     volumes:
       - inkasec_pg:/var/lib/postgresql
@@ -38,6 +41,9 @@ services:
 
     env_file:
       - ./mi-api-fastapi/.env
+
+    environment:
+      DATABASE_URL: postgresql+psycopg://inkasec:${INKASEC_DB_PASSWORD:?Configura INKASEC_DB_PASSWORD en el .env de la raiz}@db:5432/inkasec
 
     ports:
       - "8001:8000"
