@@ -91,6 +91,11 @@ export const api = {
 
   admin: {
     dashboard: () => request('/admin/dashboard'),
+    users: () => request('/admin/users'),
+    areas: () => request('/admin/areas'),
+    createArea: (payload) => request('/admin/areas', { method: 'POST', body: payload }),
+    audit: ({ limit = 20, offset = 0, q = '' } = {}) => request(`/admin/audit?${new URLSearchParams({ limit, offset, q })}`),
+    reportSummary: () => request('/admin/reports/summary'),
     createUser: (payload) => request('/admin/users', { method: 'POST', body: payload }),
     updateUser: (id, payload) => request(`/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: payload }),
     deleteUser: (id) => request(`/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),

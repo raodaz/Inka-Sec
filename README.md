@@ -40,6 +40,8 @@ El frontend React está en `frontend/`, la API FastAPI en `mi-api-fastapi/` y la
 
    En Windows PowerShell, usa `npm.cmd ci` y `npm.cmd run dev` si PowerShell bloquea `npm.ps1`.
 
-5. Abre `http://localhost:5173/`. Inicia sesión con el correo y contraseña configurados; luego escribe el código de tu aplicación de autenticación. El panel se obtiene de `http://localhost:8000/api/v1/admin/dashboard`. Para cambiar el puerto de la API, configura `VITE_API_URL` en `frontend/.env`.
+5. Abre `http://localhost:5173/`. Inicia sesión con el correo y contraseña configurados; luego escribe el código de tu aplicación de autenticación. Para cambiar el puerto de la API, configura `VITE_API_URL` en `frontend/.env`.
+
+El administrador dispone de URLs que se pueden abrir y recargar directamente: `/admin`, `/admin/usuarios`, `/admin/areas`, `/admin/auditoria` y `/admin/reportes`. Cada sección consulta su propio recurso de la API (`/api/v1/admin/dashboard`, `/users`, `/areas`, `/audit` y `/reports/summary`). En «Áreas y roles» se crean áreas por separado; los usuarios se crean en «Usuarios». La auditoría permite buscar y recorrer páginas de 20 eventos. El avance del reporte es el promedio de los módulos que ya tienen un registro de progreso, por lo que no equivale al cumplimiento de todas las asignaciones.
 
 La ruta `http://localhost:5173/?preview=admin` muestra únicamente datos de ejemplo para revisar el diseño.

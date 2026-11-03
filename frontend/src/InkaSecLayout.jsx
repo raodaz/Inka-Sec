@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
+import { ADMIN_PATHS } from './adminRoutes';
 import './inka-sec.css';
 
 export function Icon({ name, size = 20 }) {
@@ -88,7 +89,12 @@ export default function InkaSecLayout({ activeView, onViewChange, notifications 
 
         <nav className="inka-sidebar-nav" aria-label="Navegación del panel">
           <span className="inka-nav-caption">Principal</span>
-          {navItems.map((item) => (
+          {navItems.map((item) => user?.role === 'admin' ? (
+            <a key={item.id} href={ADMIN_PATHS[item.id]} aria-current={activeView === item.id ? 'page' : undefined} className={activeView === item.id ? 'is-active' : ''} onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onViewChange(item.id); }}>
+              <Icon name={item.icon} size={19}/><span>{item.label}</span>
+              {activeView === item.id && <Icon name="chevron" size={16}/>}
+            </a>
+          ) : (
             <button key={item.id} type="button" className={activeView === item.id ? 'is-active' : ''} onClick={() => onViewChange(item.id)}>
               <Icon name={item.icon} size={19}/><span>{item.label}</span>
               {activeView === item.id && <Icon name="chevron" size={16}/>}

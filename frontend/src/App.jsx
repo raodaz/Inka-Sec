@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './AuthContext';
 import InkaSecLayout, { Icon } from './InkaSecLayout';
 import { api } from './api';
+import { ADMIN_PATHS, adminViewFromPath } from './adminRoutes';
 import ParticleNetwork from './ParticleNetwork';
 import './inka-sec.css';
 
@@ -591,7 +592,7 @@ const AUDIT_LABELS = {
   LOGIN_SUCCESS: 'Inicio de sesión', LOGIN_SUCCESS_MFA: 'Inicio de sesión con 2FA',
   LOGIN_FAILED: 'Inicio de sesión fallido', MFA_FAILED: 'Verificación 2FA fallida',
   USER_CREATED: 'Usuario creado', USER_UPDATED: 'Usuario actualizado',
-  USER_DELETED: 'Usuario eliminado', ROLE_CHANGED: 'Rol actualizado',
+  USER_DELETED: 'Usuario eliminado', ROLE_CHANGED: 'Rol actualizado', AREA_CREATED: 'Área creada',
 };
 
 function UserTable({ rows, search, setSearch, onEdit, onDelete, currentUserId, areaFilter = '' }) {
@@ -611,7 +612,7 @@ export function AdminHome({ data, onCreateUser, onExport, search, setSearch, onE
         <span className="eyebrow">CENTRO DE CONTROL · INKASEC</span>
         <h1 id="admin-hero-title">La seguridad de tu equipo, <span>en tus manos.</span></h1>
         <p>Supervisa la formación, organiza accesos y detecta lo que necesita atención.</p>
-        <div className="hero-actions"><button className="btn btn-primary" onClick={onCreateUser}>Crear usuario</button><button className="btn btn-secondary" onClick={onExport}>Exportar usuarios por área</button></div>
+        <div className="hero-actions"><button className="btn btn-primary" onClick={onCreateUser}>Crear usuario</button><button className="btn btn-secondary" onClick={onExport}>Exportar reporte por área</button></div>
       </div>
       <div className="admin-hero-aside" aria-hidden="true"><span>VISTA GENERAL</span><strong>{data.users.length}</strong><small>personas en tu organización</small></div>
     </section>
@@ -621,25 +622,23 @@ export function AdminHome({ data, onCreateUser, onExport, search, setSearch, onE
   </>;
 }
 
-function AuditPanel({ rows, searchable = false }) {
-  const [search, setSearch] = useState('');
-  const filtered = rows.filter((item) => `${AUDIT_LABELS[item.action] || item.action} ${item.detail} ${item.time}`.toLowerCase().includes(search.toLowerCase()));
-  return <article className="panel"><div className="panel-head"><div><span className="eyebrow">TRAZABILIDAD</span><h2>Últimos eventos</h2></div>{searchable && <input className="table-search" type="search" aria-label="Buscar evento reciente" placeholder="Buscar evento…" value={search} onChange={(e) => setSearch(e.target.value)}/>}</div><div className="audit-list">{filtered.map((item) => <div key={item.id}><span className={`audit-mark is-${item.type}`}><Icon name={item.type === 'danger' ? 'lock' : item.type === 'role' ? 'users' : 'shield'} size={16}/></span><div><strong>{AUDIT_LABELS[item.action] || item.action}</strong><p>{item.detail}</p><small>{auditTime(item.time)}</small></div></div>)}</div>{filtered.length === 0 && <p className="table-empty">No hay eventos recientes que coincidan.</p>}</article>;
+function AuditPanel({ rows, search, onSearch }) {
+  return <article className="panel"><div className="panel-head"><div><span className="eyebrow">TRAZABILIDAD</span><h2>{onSearch ? 'Historial de actividades' : 'Últimos eventos'}</h2></div>{onSearch && <input className="table-search" type="search" aria-label="Buscar evento" placeholder="Buscar acción, usuario o IP…" value={search} onChange={(e) => onSearch(e.target.value)}/>}</div><div className="audit-list">{rows.map((item) => <div key={item.id}><span className={`audit-mark is-${item.type}`}><Icon name={item.type === 'danger' ? 'lock' : item.type === 'role' ? 'users' : 'shield'} size={16}/></span><div><strong>{AUDIT_LABELS[item.action] || item.action}</strong><p>{item.actor ? `${item.actor} · IP ${item.ip || 'desconocida'}` : item.detail}</p><small>{auditTime(item.time)}</small></div></div>)}</div>{rows.length === 0 && <p className="table-empty">No se encontraron eventos.</p>}</article>;
 }
 
 function AreasPanel({ rows, users = [] }) {
-  return <article className="panel"><div className="panel-head"><div><span className="eyebrow">ÁREAS</span><h2>Usuarios por área</h2></div></div><div className="area-list">{rows.map((area) => <div key={area.name}><div><strong>{area.name}</strong><small>{area.users} usuarios · {users.filter((u) => u.area === area.name && roleValue(u.role) === 'manager').length} gestores</small><b>{area.users}</b></div></div>)}</div>{rows.length === 0 && <p className="table-empty">Todavía no hay áreas registradas.</p>}</article>;
+  return <article className="panel"><div className="panel-head"><div><span className="eyebrow">ÁREAS</span><h2>Usuarios por área</h2></div></div><div className="area-list">{rows.map((area) => <div key={area.id || area.name}><div><strong>{area.name}</strong><small>{area.users} usuarios · {area.managers ?? users.filter((u) => u.area === area.name && roleValue(u.role) === 'manager').length} gestores</small><b>{area.users}</b></div></div>)}</div>{rows.length === 0 && <p className="table-empty">Todavía no hay áreas registradas.</p>}</article>;
 }
 
-function AdminViews({ data, view, onCreateUser, onExport, onEditUser, onDeleteUser, currentUserId, notice }) {
+function AdminViews({ data, view, onCreateUser, onCreateArea, onExport, onEditUser, onDeleteUser, currentUserId, notice, auditPage, setAuditPage, auditQuery, setAuditQuery }) {
   const [search, setSearch] = useState('');
   const [selectedArea, setSelectedArea] = useState('');
   const feedback = notice && <div className={`admin-notice ${notice.type === 'error' ? 'is-error' : ''}`} role="status">{notice.message}</div>;
   if (view === 'inicio') return <>{feedback}<AdminHome data={data} onCreateUser={onCreateUser} onExport={onExport} search={search} setSearch={setSearch} onEditUser={onEditUser} onDeleteUser={onDeleteUser} currentUserId={currentUserId}/></>;
   if (view === 'usuarios') return <GenericPage eyebrow="ADMINISTRACIÓN" title="Usuarios" description="Crea cuentas, cambia roles y estados, o elimina usuarios.">{feedback}<div className="page-toolbar"><button className="btn btn-primary" onClick={onCreateUser}>Crear usuario</button></div><UserTable rows={data.users} search={search} setSearch={setSearch} onEdit={onEditUser} onDelete={onDeleteUser} currentUserId={currentUserId}/></GenericPage>;
-  if (view === 'areas') return <GenericPage eyebrow="ORGANIZACIÓN" title="Áreas y roles" description="Consulta la distribución de usuarios y cambia sus roles.">{feedback}<AreasPanel rows={data.areas} users={data.users}/><div className="page-toolbar admin-area-toolbar"><label>Filtrar área <select value={selectedArea} onChange={(e) => setSelectedArea(e.target.value)}><option value="">Todas las áreas</option>{data.areas.map((area) => <option key={area.name} value={area.name}>{area.name}</option>)}</select></label><button className="btn btn-primary" onClick={onCreateUser}>Crear usuario o área</button></div><UserTable rows={data.users} search={search} setSearch={setSearch} areaFilter={selectedArea} onEdit={onEditUser} onDelete={onDeleteUser} currentUserId={currentUserId}/><p className="admin-hint">La API aún no permite cambiar el área de una cuenta existente ni editar el nombre de un área.</p></GenericPage>;
-  if (view === 'auditoria') return <GenericPage eyebrow="TRAZABILIDAD" title="Auditoría" description="Consulta los últimos eventos de acceso y acciones críticas registrados por la API.">{feedback}<AuditPanel rows={data.audit} searchable/><p className="admin-hint">La API muestra únicamente los 8 eventos más recientes, con fecha e IP. Aún no entrega el nombre del actor en esta vista ni permite consultar el historial completo. La retención de 12 meses requiere soporte del servidor.</p></GenericPage>;
-  return <GenericPage eyebrow="INDICADORES" title="Reportes" description="Descarga los datos disponibles de tu organización.">{feedback}<article className="panel report-card"><div><span className="report-icon"><Icon name="report" size={28}/></span><h2>Usuarios por área</h2><p>El CSV actual incluye el nombre de cada área y su cantidad de usuarios.</p></div><button className="btn btn-primary" onClick={onExport}>Exportar CSV</button></article><p className="admin-hint">La API aún no incluye avance, aprobación ni otros indicadores de aprendizaje en este archivo.</p></GenericPage>;
+  if (view === 'areas') return <GenericPage eyebrow="ORGANIZACIÓN" title="Áreas y roles" description="Crea áreas y consulta la distribución de usuarios y roles.">{feedback}<div className="page-toolbar"><button className="btn btn-primary" onClick={onCreateArea}>Crear área</button></div><AreasPanel rows={data.areas} users={data.users}/><div className="page-toolbar admin-area-toolbar"><label>Filtrar área <select value={selectedArea} onChange={(e) => setSelectedArea(e.target.value)}><option value="">Todas las áreas</option>{data.areas.map((area) => <option key={area.id} value={area.name}>{area.name}</option>)}</select></label></div><UserTable rows={data.users} search={search} setSearch={setSearch} areaFilter={selectedArea} onEdit={onEditUser} onDelete={onDeleteUser} currentUserId={currentUserId}/><p className="admin-hint">Los roles se cambian desde «Editar». La API aún no permite cambiar el área de una cuenta existente.</p></GenericPage>;
+  if (view === 'auditoria') return <GenericPage eyebrow="TRAZABILIDAD" title="Auditoría" description="Consulta acciones críticas con fecha, actor e IP.">{feedback}<AuditPanel rows={data.audit.items} search={auditQuery} onSearch={(value) => { setAuditQuery(value); setAuditPage(0); }}/><div className="admin-pagination"><span>{data.audit.total === 0 ? 'Sin resultados' : `${data.audit.offset + 1}–${Math.min(data.audit.offset + data.audit.items.length, data.audit.total)} de ${data.audit.total}`}</span><div><button className="btn btn-secondary" disabled={auditPage === 0} onClick={() => setAuditPage(auditPage - 1)}>Anterior</button><button className="btn btn-secondary" disabled={data.audit.offset + data.audit.items.length >= data.audit.total} onClick={() => setAuditPage(auditPage + 1)}>Siguiente</button></div></div></GenericPage>;
+  return <GenericPage eyebrow="INDICADORES" title="Reportes" description="Consulta indicadores registrados y exporta un archivo CSV.">{feedback}<section className="stats-grid"><StatCard item={{label:'Usuarios activos',value:data.report.active_users,helper:`De ${data.report.total_users} registrados`,icon:'users',tone:'blue'}}/><StatCard item={{label:'Avance registrado',value:data.report.average_progress == null ? '—' : `${data.report.average_progress}%`,helper:'Promedio de registros existentes',icon:'chart',tone:'green'}}/><StatCard item={{label:'Módulos completados',value:data.report.completed_modules,helper:'Registros con 100% de avance',icon:'book',tone:'blue'}}/><StatCard item={{label:'Áreas',value:data.report.areas.length,helper:'En esta empresa',icon:'layers',tone:'amber'}}/></section><article className="panel report-card"><div><span className="report-icon"><Icon name="report" size={28}/></span><h2>Reporte por área</h2><p>Incluye usuarios, usuarios activos, avance promedio registrado y módulos completados.</p></div><button className="btn btn-primary" onClick={onExport}>Exportar CSV</button></article><article className="panel admin-report-areas"><div className="panel-head"><div><span className="eyebrow">DESGLOSE</span><h2>Indicadores por área</h2></div></div><div className="table-wrap"><table><thead><tr><th>Área</th><th>Usuarios</th><th>Activos</th><th>Avance registrado</th><th>Módulos completados</th></tr></thead><tbody>{data.report.areas.map((area) => <tr key={area.id}><td><strong>{area.name}</strong></td><td>{area.users}</td><td>{area.active_users}</td><td>{area.average_progress == null ? 'Sin registros' : `${area.average_progress}%`}</td><td>{area.completed_modules}</td></tr>)}</tbody></table></div></article><p className="admin-hint">El avance promedio considera únicamente módulos con progreso registrado; no representa el cumplimiento de todas las asignaciones.</p></GenericPage>;
 }
 
 function GenericPage({ eyebrow, title, description, children }) {
@@ -658,7 +657,7 @@ function ManagerCreateModal({ onClose, onCreated }) {
 }
 
 function AdminCreateUserModal({ onClose, onCreated, areas = [] }) {
-  const [form, setForm] = useState({ name: '', email: '', area: '', role: 'worker' }); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [created, setCreated] = useState(null);
+  const [form, setForm] = useState({ name: '', email: '', area: areas[0]?.name || '', role: 'worker' }); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [created, setCreated] = useState(null);
   async function submit(e) {
     e.preventDefault(); setBusy(true); setError('');
     try {
@@ -669,7 +668,20 @@ function AdminCreateUserModal({ onClose, onCreated, areas = [] }) {
     finally { setBusy(false); }
   }
   if (created) return <Modal title="Usuario creado" onClose={onClose}><div className="created-user-credentials"><p>Guarda estos datos ahora y entrégalos al usuario por un canal seguro. Se muestran una sola vez.</p><div><strong>Correo</strong><code>{created.email}</code></div><div><strong>Contraseña inicial</strong><code>{created.temporary_password}</code></div>{created.totp_setup_secret && <div><strong>Secreto para configurar 2FA</strong><code>{created.totp_setup_secret}</code><small>El usuario debe agregar este secreto a su aplicación de autenticación antes de iniciar sesión.</small></div>}<div className="modal-actions"><button type="button" className="btn btn-primary" onClick={onClose}>Ya guardé los datos</button></div></div></Modal>;
-  return <Modal title="Crear usuario" onClose={onClose}><form className="modal-form" onSubmit={submit}><label>Nombre completo<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required maxLength={120}/></label><label>Correo corporativo<input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required/></label><div className="form-grid"><label>Área<input list="admin-areas" value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} placeholder="Selecciona o escribe un área" required minLength={2} maxLength={100}/><datalist id="admin-areas">{areas.map((area) => <option key={area.name} value={area.name}/>)}</datalist></label><label>Rol<select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}><option value="worker">Trabajador</option><option value="manager">Gestor</option><option value="admin">Administrador</option></select></label></div><p className="form-note">Si el área no existe, se creará al guardar. Los roles Gestor y Administrador requieren configurar 2FA.</p>{error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Creando…' : 'Crear usuario'}</button></div></form></Modal>;
+  return <Modal title="Crear usuario" onClose={onClose}><form className="modal-form" onSubmit={submit}><label>Nombre completo<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required maxLength={120}/></label><label>Correo corporativo<input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required/></label><div className="form-grid"><label>Área<select value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} required><option value="" disabled>Selecciona un área</option>{areas.map((area) => <option key={area.id || area.name} value={area.name}>{area.name}</option>)}</select></label><label>Rol<select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}><option value="worker">Trabajador</option><option value="manager">Gestor</option><option value="admin">Administrador</option></select></label></div><p className="form-note">Las áreas se crean en «Áreas y roles». Los roles Gestor y Administrador requieren configurar 2FA.</p>{error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button className="btn btn-primary" disabled={busy || !form.area}>{busy ? 'Creando…' : 'Crear usuario'}</button></div></form></Modal>;
+}
+
+function AdminCreateAreaModal({ onClose, onCreated }) {
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function submit(event) {
+    event.preventDefault(); setBusy(true); setError('');
+    try { await api.admin.createArea({ name: name.trim() }); await onCreated(); onClose(); }
+    catch (err) { setError(err.message || 'No se pudo crear el área.'); }
+    finally { setBusy(false); }
+  }
+  return <Modal title="Crear área" onClose={onClose}><form className="modal-form" onSubmit={submit}><label>Nombre del área<input autoFocus value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={100} required placeholder="Por ejemplo: Finanzas"/></label><p className="admin-hint">El área quedará disponible para asignarla al crear usuarios.</p>{error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button className="btn btn-primary" disabled={busy || name.trim().length < 2}>{busy ? 'Creando…' : 'Crear área'}</button></div></form></Modal>;
 }
 
 function AdminEditUserModal({ user, currentUserId, onClose, onSaved }) {
@@ -702,28 +714,70 @@ function AdminDeleteUserModal({ user, onClose, onDeleted }) {
 
 function AuthenticatedApp() {
   const { user, loading } = useAuth();
-  const [view, setView] = useState('inicio');
+  const [view, setView] = useState(() => adminViewFromPath(window.location.pathname));
   const [data, setData] = useState(null);
+  const [dataView, setDataView] = useState(null);
   const [error, setError] = useState('');
   const [modal, setModal] = useState(null);
   const [notice, setNotice] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [auditPage, setAuditPage] = useState(0);
+  const [auditQuery, setAuditQuery] = useState('');
+  const activeView = user?.role === 'admin' ? view : 'inicio';
 
-  useEffect(() => { setView('inicio'); setData(null); setError(''); setNotice(null); }, [user?.id]);
+  useEffect(() => {
+    const onPopState = () => { setView(adminViewFromPath(window.location.pathname)); setError(''); setNotice(null); };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   useEffect(() => {
     if (!user) return;
-    let active = true; const loader = user.role === 'admin' ? api.admin.dashboard : user.role === 'manager' ? api.manager.dashboard : api.worker.dashboard;
-    loader().then((result) => { if (active) setData(result); }).catch((err) => { if (active) setError(err.message || 'No se pudo cargar el panel.'); });
-    return () => { active = false; };
+    if (user.role === 'admin') {
+      const initialView = adminViewFromPath(window.location.pathname);
+      if (window.location.pathname !== ADMIN_PATHS[initialView]) window.history.replaceState(null, '', ADMIN_PATHS[initialView]);
+      setView(initialView);
+    } else if (window.location.pathname.startsWith('/admin')) {
+      window.history.replaceState(null, '', '/');
+      setView('inicio');
+    }
+    setData(null); setDataView(null); setError(''); setNotice(null);
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    async function load() {
+      if (user.role !== 'admin') return user.role === 'manager' ? api.manager.dashboard() : api.worker.dashboard();
+      if (activeView === 'inicio') return api.admin.dashboard();
+      if (activeView === 'usuarios' || activeView === 'areas') {
+        const [users, areas] = await Promise.all([api.admin.users(), api.admin.areas()]);
+        return { users, areas };
+      }
+      if (activeView === 'auditoria') return { audit: await api.admin.audit({ limit: 20, offset: auditPage * 20, q: auditQuery }) };
+      return { report: await api.admin.reportSummary() };
+    }
+    load().then((result) => { if (active) { setData(result); setDataView(activeView); setError(''); } }).catch((err) => { if (active) setError(err.message || 'No se pudo cargar el panel.'); });
+    return () => { active = false; };
+  }, [user, activeView, reloadKey, auditPage, auditQuery]);
+
+  function navigate(nextView) {
+    if (user?.role === 'admin') {
+      const path = ADMIN_PATHS[nextView] || ADMIN_PATHS.inicio;
+      if (window.location.pathname !== path) window.history.pushState(null, '', path);
+    }
+    setView(nextView);
+    setError('');
+    setNotice(null);
+  }
 
   if (loading) return <LoadingScreen/>;
   if (!user) return <LoginPage/>;
   if (!['worker', 'manager', 'admin'].includes(user.role)) return <div className="fatal-state"><h1>Acceso no autorizado</h1><p>Tu cuenta no tiene un rol válido asignado.</p></div>;
-  if (!data && !error) return <LoadingScreen/>;
 
   async function refreshAdmin(message) {
-    try { setData(await api.admin.dashboard()); setNotice({ type: 'success', message }); }
-    catch (err) { setNotice({ type: 'error', message: `El cambio se guardó, pero no se pudo actualizar el panel: ${err.message}` }); }
+    setNotice({ type: 'success', message });
+    setReloadKey((value) => value + 1);
   }
 
   async function exportReport() {
@@ -731,16 +785,16 @@ function AuthenticatedApp() {
       const blob = await api.admin.exportReport();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = `inkasec-usuarios-por-area-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.href = url; a.download = `inkasec-reporte-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setNotice({ type: 'success', message: 'Se descargó el CSV de usuarios por área.' });
+      setNotice({ type: 'success', message: 'Se descargó el reporte por área.' });
     } catch (err) { setNotice({ type: 'error', message: err.message || 'No se pudo exportar el CSV.' }); }
   }
 
-  const content = error ? <div className="fatal-state inside"><h2>No pudimos cargar esta sección</h2><p>{error}</p><button className="btn btn-secondary" onClick={() => window.location.reload()}>Reintentar</button></div> : user.role === 'admin' ? <AdminViews data={data} view={view} onCreateUser={() => setModal('user')} onExport={exportReport} onEditUser={(item) => setModal({ type: 'edit', user: item })} onDeleteUser={(item) => setModal({ type: 'delete', user: item })} currentUserId={user.id} notice={notice}/> : user.role === 'manager' ? <ManagerViews data={data} view={view} onCreate={() => setModal('content')}/> : <WorkerViews data={data} view={view} setView={setView}/>;
+  const content = error ? <div className="fatal-state inside"><h2>No pudimos cargar esta sección</h2><p>{error}</p><button className="btn btn-secondary" onClick={() => { setError(''); setReloadKey((value) => value + 1); }}>Reintentar</button></div> : !data || dataView !== activeView ? <div className="panel admin-loading" role="status">Cargando sección…</div> : user.role === 'admin' ? <AdminViews data={data} view={view} onCreateUser={() => setModal('user')} onCreateArea={() => setModal('area')} onExport={exportReport} onEditUser={(item) => setModal({ type: 'edit', user: item })} onDeleteUser={(item) => setModal({ type: 'delete', user: item })} currentUserId={user.id} notice={notice} auditPage={auditPage} setAuditPage={setAuditPage} auditQuery={auditQuery} setAuditQuery={setAuditQuery}/> : user.role === 'manager' ? <ManagerViews data={data} view={view} onCreate={() => setModal('content')}/> : <WorkerViews data={data} view={view} setView={navigate}/>;
 
-  return <InkaSecLayout activeView={view} onViewChange={setView} notifications={data?.notifications || []}><div className="inka-page-shell">{content}</div>{modal === 'content' && <ManagerCreateModal onClose={() => setModal(null)} onCreated={(item) => setData((prev) => ({ ...prev, content: [item, ...prev.content] }))}/>} {modal === 'user' && <AdminCreateUserModal onClose={() => setModal(null)} areas={data?.areas || []} onCreated={() => refreshAdmin('Usuario creado correctamente.')}/>} {modal?.type === 'edit' && <AdminEditUserModal user={modal.user} currentUserId={user.id} onClose={() => setModal(null)} onSaved={() => refreshAdmin('Acceso actualizado correctamente.')}/>} {modal?.type === 'delete' && <AdminDeleteUserModal user={modal.user} onClose={() => setModal(null)} onDeleted={() => refreshAdmin('Usuario eliminado correctamente.')}/>}</InkaSecLayout>;
+  return <InkaSecLayout activeView={view} onViewChange={navigate} notifications={data?.notifications || []}><div className="inka-page-shell">{content}</div>{modal === 'content' && <ManagerCreateModal onClose={() => setModal(null)} onCreated={(item) => setData((prev) => ({ ...prev, content: [item, ...prev.content] }))}/>} {modal === 'user' && <AdminCreateUserModal onClose={() => setModal(null)} areas={data?.areas || []} onCreated={() => refreshAdmin('Usuario creado correctamente.')}/>} {modal === 'area' && <AdminCreateAreaModal onClose={() => setModal(null)} onCreated={() => refreshAdmin('Área creada correctamente.')}/>} {modal?.type === 'edit' && <AdminEditUserModal user={modal.user} currentUserId={user.id} onClose={() => setModal(null)} onSaved={() => refreshAdmin('Acceso actualizado correctamente.')}/>} {modal?.type === 'delete' && <AdminDeleteUserModal user={modal.user} onClose={() => setModal(null)} onDeleted={() => refreshAdmin('Usuario eliminado correctamente.')}/>}</InkaSecLayout>;
 }
 
 export default function App() { return <AuthProvider><AuthenticatedApp/></AuthProvider>; }
