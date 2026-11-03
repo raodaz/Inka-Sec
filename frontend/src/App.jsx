@@ -1,11 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './AuthContext';
 import InkaSecLayout, { Icon } from './InkaSecLayout';
 import { api } from './api';
 import ParticleNetwork from './ParticleNetwork';
 import './inka-sec.css';
-
-const ROLE_LABEL = { worker: 'Trabajador', manager: 'Gestor de contenido', admin: 'Administrador' };
 
 function ProgressBar({ value, danger = false }) {
   return <div className={`progress-track ${danger ? 'is-danger' : ''}`} aria-label={`${value}%`}><span style={{ width: `${Math.max(0, Math.min(100, value))}%` }}/></div>;
@@ -579,12 +577,33 @@ function ManagerViews({ data, view, onCreate }) {
   return <GenericPage eyebrow="ANALÍTICA" title="Estadísticas" description="Mide aprobación, errores frecuentes y efectividad del contenido."><article className="panel"><div className="error-bars">{data.topicErrors.map((item) => <div key={item.topic}><div><span>{item.topic}</span><b>{item.errorRate}% error</b></div><ProgressBar value={item.errorRate} danger/></div>)}</div></article></GenericPage>;
 }
 
-function UserTable({ rows, search, setSearch }) {
-  const filtered = rows.filter((u) => `${u.name} ${u.email} ${u.area} ${u.role}`.toLowerCase().includes(search.toLowerCase()));
-  return <article className="panel"><div className="panel-head"><div><span className="eyebrow">GESTIÓN DE USUARIOS</span><h2>Usuarios de la organización</h2></div><input className="table-search" type="search" placeholder="Buscar usuario…" value={search} onChange={(e) => setSearch(e.target.value)}/></div><div className="table-wrap"><table><thead><tr><th>Usuario</th><th>Área</th><th>Rol</th><th>Estado</th><th>2FA</th><th>Progreso</th></tr></thead><tbody>{filtered.map((u) => <tr key={u.id}><td><div className="table-user"><span>{u.name[0]}</span><div><strong>{u.name}</strong><small>{u.email}</small></div></div></td><td>{u.area}</td><td>{u.role}</td><td><span className={`status ${u.status === 'Activo' ? 'status-publicado' : 'status-borrador'}`}>{u.status}</span></td><td>{u.twoFactor ? 'Activo' : '—'}</td><td><div className="table-progress"><ProgressBar value={u.progress}/><b>{u.progress}%</b></div></td></tr>)}</tbody></table></div></article>;
+const ADMIN_ROLES = { Trabajador: 'worker', Gestor: 'manager', 'Gestor de contenido': 'manager', Administrador: 'admin' };
+const roleValue = (role) => ADMIN_ROLES[role] || role;
+const critical2FA = (users, role) => {
+  const members = users.filter((u) => roleValue(u.role) === role && u.status === 'Activo');
+  return members.length ? Math.round(members.filter((u) => u.twoFactor).length * 100 / members.length) : null;
+};
+const auditTime = (value) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' });
+};
+const AUDIT_LABELS = {
+  LOGIN_SUCCESS: 'Inicio de sesión', LOGIN_SUCCESS_MFA: 'Inicio de sesión con 2FA',
+  LOGIN_FAILED: 'Inicio de sesión fallido', MFA_FAILED: 'Verificación 2FA fallida',
+  USER_CREATED: 'Usuario creado', USER_UPDATED: 'Usuario actualizado',
+  USER_DELETED: 'Usuario eliminado', ROLE_CHANGED: 'Rol actualizado',
+};
+
+function UserTable({ rows, search, setSearch, onEdit, onDelete, currentUserId, areaFilter = '' }) {
+  const filtered = rows.filter((u) => (!areaFilter || u.area === areaFilter) && `${u.name} ${u.email} ${u.area} ${u.role} ${u.status}`.toLowerCase().includes(search.toLowerCase()));
+  return <article className="panel"><div className="panel-head"><div><span className="eyebrow">GESTIÓN DE USUARIOS</span><h2>Usuarios de la organización</h2></div><input className="table-search" type="search" aria-label="Buscar usuario" placeholder="Buscar usuario…" value={search} onChange={(e) => setSearch(e.target.value)}/></div><div className="table-wrap"><table><thead><tr><th>Usuario</th><th>Área</th><th>Rol</th><th>Estado</th><th>2FA</th>{onEdit && <th>Acciones</th>}</tr></thead><tbody>{filtered.map((u) => <tr key={u.id}><td><div className="table-user"><span>{u.name?.[0] || '?'}</span><div><strong>{u.name}</strong><small>{u.email}</small></div></div></td><td>{u.area}</td><td>{u.role}</td><td><span className={`status ${u.status === 'Activo' ? 'status-publicado' : 'status-borrador'}`}>{u.status}</span></td><td>{u.twoFactor ? 'Activo' : '—'}</td>{onEdit && <td><div className="table-actions"><button type="button" className="text-button" onClick={() => onEdit(u)} aria-label={`Editar ${u.name}`}>Editar</button>{Number(u.id) !== Number(currentUserId) && <button type="button" className="text-button danger-text" onClick={() => onDelete(u)} aria-label={`Eliminar ${u.name}`}>Eliminar</button>}</div></td>}</tr>)}</tbody></table></div>{filtered.length === 0 && <p className="table-empty">No hay usuarios que coincidan con la búsqueda.</p>}</article>;
 }
 
-export function AdminHome({ data, onCreateUser, onExport, search, setSearch }) {
+export function AdminHome({ data, onCreateUser, onExport, search, setSearch, onEditUser, onDeleteUser, currentUserId }) {
+  const admin2FA = critical2FA(data.users, 'admin');
+  const manager2FA = critical2FA(data.users, 'manager');
+  const criticalUsers = data.users.filter((u) => ['admin', 'manager'].includes(roleValue(u.role)) && u.status === 'Activo');
+  const criticalRate = criticalUsers.length ? `${Math.round(criticalUsers.filter((u) => u.twoFactor).length * 100 / criticalUsers.length)}%` : '—';
   return <>
     <section className="admin-hero" aria-labelledby="admin-hero-title">
       <ParticleNetwork />
@@ -592,31 +611,35 @@ export function AdminHome({ data, onCreateUser, onExport, search, setSearch }) {
         <span className="eyebrow">CENTRO DE CONTROL · INKASEC</span>
         <h1 id="admin-hero-title">La seguridad de tu equipo, <span>en tus manos.</span></h1>
         <p>Supervisa la formación, organiza accesos y detecta lo que necesita atención.</p>
-        <div className="hero-actions"><button className="btn btn-primary" onClick={onCreateUser}>Crear usuario</button><button className="btn btn-secondary" onClick={onExport}>Exportar reporte</button></div>
+        <div className="hero-actions"><button className="btn btn-primary" onClick={onCreateUser}>Crear usuario</button><button className="btn btn-secondary" onClick={onExport}>Exportar usuarios por área</button></div>
       </div>
       <div className="admin-hero-aside" aria-hidden="true"><span>VISTA GENERAL</span><strong>{data.users.length}</strong><small>personas en tu organización</small></div>
     </section>
-    <section className="stats-grid">{data.stats.map((item) => <StatCard key={item.label} item={item}/>)}</section>
-    <section className="two-col-grid admin-grid"><UserTable rows={data.users} search={search} setSearch={setSearch}/><article className="panel security-overview"><span className="security-seal"><Icon name="lock" size={23}/></span><span className="eyebrow">SEGURIDAD DE ACCESO</span><h2>Controles activos</h2><div className="security-check"><span>2FA en administradores</span><b>100%</b></div><ProgressBar value={100}/><div className="security-check"><span>2FA en gestores</span><b>100%</b></div><ProgressBar value={100}/><div className="security-check"><span>Bloqueo tras 3 intentos</span><b>Backend</b></div><div className="security-note"><Icon name="shield" size={17}/><p>La autorización real debe validarse también en FastAPI; ocultar opciones en React no reemplaza RBAC del servidor.</p></div></article></section>
+    <section className="stats-grid">{data.stats.filter((item) => item.label !== '2FA en roles críticos').map((item) => <StatCard key={item.label} item={item}/>)}<StatCard item={{ label: '2FA en roles críticos', value: criticalRate, helper: 'Administradores y gestores activos', icon: 'lock', tone: 'blue' }}/></section>
+    <section className="two-col-grid admin-grid"><UserTable rows={data.users} search={search} setSearch={setSearch} onEdit={onEditUser} onDelete={onDeleteUser} currentUserId={currentUserId}/><article className="panel security-overview"><span className="security-seal"><Icon name="lock" size={23}/></span><span className="eyebrow">SEGURIDAD DE ACCESO</span><h2>Verificación en dos pasos</h2><div className="security-check"><span>Administradores activos</span><b>{admin2FA == null ? 'Sin usuarios' : `${admin2FA}%`}</b></div><ProgressBar value={admin2FA || 0}/><div className="security-check"><span>Gestores activos</span><b>{manager2FA == null ? 'Sin usuarios' : `${manager2FA}%`}</b></div><ProgressBar value={manager2FA || 0}/><div className="security-note"><Icon name="shield" size={17}/><p>Estos porcentajes se calculan con las cuentas visibles. El bloqueo de acceso y los permisos se aplican en la API.</p></div></article></section>
     <section className="two-col-grid lower"><AuditPanel rows={data.audit}/><AreasPanel rows={data.areas}/></section>
   </>;
 }
 
-function AuditPanel({ rows }) {
-  return <article className="panel"><div className="panel-head"><div><span className="eyebrow">TRAZABILIDAD</span><h2>Actividad reciente</h2></div></div><div className="audit-list">{rows.map((item) => <div key={item.id}><span className={`audit-mark is-${item.type}`}><Icon name={item.type === 'danger' ? 'lock' : item.type === 'role' ? 'users' : 'shield'} size={16}/></span><div><strong>{item.action}</strong><p>{item.detail}</p><small>{item.time}</small></div></div>)}</div></article>;
-}
-
-function AreasPanel({ rows }) {
-  return <article className="panel"><div className="panel-head"><div><span className="eyebrow">ÁREAS</span><h2>Cumplimiento</h2></div></div><div className="area-list">{rows.map((area) => <div key={area.name}><div><strong>{area.name}</strong><small>{area.users} usuarios</small><b>{area.compliance}%</b></div><ProgressBar value={area.compliance}/></div>)}</div></article>;
-}
-
-function AdminViews({ data, view, onCreateUser, onExport }) {
+function AuditPanel({ rows, searchable = false }) {
   const [search, setSearch] = useState('');
-  if (view === 'inicio') return <AdminHome data={data} onCreateUser={onCreateUser} onExport={onExport} search={search} setSearch={setSearch}/>;
-  if (view === 'usuarios') return <GenericPage eyebrow="ADMINISTRACIÓN" title="Usuarios" description="Crea, edita, desactiva y organiza cuentas de la empresa."><div className="page-toolbar"><button className="btn btn-primary" onClick={onCreateUser}>Crear usuario</button></div><UserTable rows={data.users} search={search} setSearch={setSearch}/></GenericPage>;
-  if (view === 'areas') return <GenericPage eyebrow="ORGANIZACIÓN" title="Áreas y roles" description="Gestiona áreas empresariales y asigna responsabilidades con RBAC."><AreasPanel rows={data.areas}/></GenericPage>;
-  if (view === 'auditoria') return <GenericPage eyebrow="TRAZABILIDAD" title="Auditoría" description="Consulta acciones críticas con fecha, usuario, IP y evento."><AuditPanel rows={data.audit}/></GenericPage>;
-  return <GenericPage eyebrow="INDICADORES" title="Reportes" description="Exporta métricas de avance y cumplimiento para otras áreas de la empresa."><article className="panel report-card"><div><span className="report-icon"><Icon name="report" size={28}/></span><h2>Reporte global de capacitación</h2><p>Incluye avance por área, cumplimiento y métricas agregadas de desempeño.</p></div><button className="btn btn-primary" onClick={onExport}>Exportar CSV</button></article></GenericPage>;
+  const filtered = rows.filter((item) => `${AUDIT_LABELS[item.action] || item.action} ${item.detail} ${item.time}`.toLowerCase().includes(search.toLowerCase()));
+  return <article className="panel"><div className="panel-head"><div><span className="eyebrow">TRAZABILIDAD</span><h2>Últimos eventos</h2></div>{searchable && <input className="table-search" type="search" aria-label="Buscar evento reciente" placeholder="Buscar evento…" value={search} onChange={(e) => setSearch(e.target.value)}/>}</div><div className="audit-list">{filtered.map((item) => <div key={item.id}><span className={`audit-mark is-${item.type}`}><Icon name={item.type === 'danger' ? 'lock' : item.type === 'role' ? 'users' : 'shield'} size={16}/></span><div><strong>{AUDIT_LABELS[item.action] || item.action}</strong><p>{item.detail}</p><small>{auditTime(item.time)}</small></div></div>)}</div>{filtered.length === 0 && <p className="table-empty">No hay eventos recientes que coincidan.</p>}</article>;
+}
+
+function AreasPanel({ rows, users = [] }) {
+  return <article className="panel"><div className="panel-head"><div><span className="eyebrow">ÁREAS</span><h2>Usuarios por área</h2></div></div><div className="area-list">{rows.map((area) => <div key={area.name}><div><strong>{area.name}</strong><small>{area.users} usuarios · {users.filter((u) => u.area === area.name && roleValue(u.role) === 'manager').length} gestores</small><b>{area.users}</b></div></div>)}</div>{rows.length === 0 && <p className="table-empty">Todavía no hay áreas registradas.</p>}</article>;
+}
+
+function AdminViews({ data, view, onCreateUser, onExport, onEditUser, onDeleteUser, currentUserId, notice }) {
+  const [search, setSearch] = useState('');
+  const [selectedArea, setSelectedArea] = useState('');
+  const feedback = notice && <div className={`admin-notice ${notice.type === 'error' ? 'is-error' : ''}`} role="status">{notice.message}</div>;
+  if (view === 'inicio') return <>{feedback}<AdminHome data={data} onCreateUser={onCreateUser} onExport={onExport} search={search} setSearch={setSearch} onEditUser={onEditUser} onDeleteUser={onDeleteUser} currentUserId={currentUserId}/></>;
+  if (view === 'usuarios') return <GenericPage eyebrow="ADMINISTRACIÓN" title="Usuarios" description="Crea cuentas, cambia roles y estados, o elimina usuarios.">{feedback}<div className="page-toolbar"><button className="btn btn-primary" onClick={onCreateUser}>Crear usuario</button></div><UserTable rows={data.users} search={search} setSearch={setSearch} onEdit={onEditUser} onDelete={onDeleteUser} currentUserId={currentUserId}/></GenericPage>;
+  if (view === 'areas') return <GenericPage eyebrow="ORGANIZACIÓN" title="Áreas y roles" description="Consulta la distribución de usuarios y cambia sus roles.">{feedback}<AreasPanel rows={data.areas} users={data.users}/><div className="page-toolbar admin-area-toolbar"><label>Filtrar área <select value={selectedArea} onChange={(e) => setSelectedArea(e.target.value)}><option value="">Todas las áreas</option>{data.areas.map((area) => <option key={area.name} value={area.name}>{area.name}</option>)}</select></label><button className="btn btn-primary" onClick={onCreateUser}>Crear usuario o área</button></div><UserTable rows={data.users} search={search} setSearch={setSearch} areaFilter={selectedArea} onEdit={onEditUser} onDelete={onDeleteUser} currentUserId={currentUserId}/><p className="admin-hint">La API aún no permite cambiar el área de una cuenta existente ni editar el nombre de un área.</p></GenericPage>;
+  if (view === 'auditoria') return <GenericPage eyebrow="TRAZABILIDAD" title="Auditoría" description="Consulta los últimos eventos de acceso y acciones críticas registrados por la API.">{feedback}<AuditPanel rows={data.audit} searchable/><p className="admin-hint">La API muestra únicamente los 8 eventos más recientes, con fecha e IP. Aún no entrega el nombre del actor en esta vista ni permite consultar el historial completo. La retención de 12 meses requiere soporte del servidor.</p></GenericPage>;
+  return <GenericPage eyebrow="INDICADORES" title="Reportes" description="Descarga los datos disponibles de tu organización.">{feedback}<article className="panel report-card"><div><span className="report-icon"><Icon name="report" size={28}/></span><h2>Usuarios por área</h2><p>El CSV actual incluye el nombre de cada área y su cantidad de usuarios.</p></div><button className="btn btn-primary" onClick={onExport}>Exportar CSV</button></article><p className="admin-hint">La API aún no incluye avance, aprobación ni otros indicadores de aprendizaje en este archivo.</p></GenericPage>;
 }
 
 function GenericPage({ eyebrow, title, description, children }) {
@@ -634,19 +657,47 @@ function ManagerCreateModal({ onClose, onCreated }) {
   return <Modal title="Crear contenido" onClose={onClose}><form className="modal-form" onSubmit={submit}><label>Título<input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required maxLength={120}/></label><div className="form-grid"><label>Tipo<select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}><option>Módulo</option><option>Reto</option></select></label><label>Tema<select value={form.topic} onChange={(e) => setForm({ ...form, topic: e.target.value })}><option>Phishing</option><option>Contraseñas</option><option>Wi-Fi público</option><option>2FA</option></select></label></div><label>Descripción<textarea rows="4" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required maxLength={500}/></label>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Guardando…' : 'Guardar borrador'}</button></div></form></Modal>;
 }
 
-function AdminCreateUserModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ name: '', email: '', area: 'Finanzas', role: 'worker' }); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [created, setCreated] = useState(null);
+function AdminCreateUserModal({ onClose, onCreated, areas = [] }) {
+  const [form, setForm] = useState({ name: '', email: '', area: '', role: 'worker' }); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [created, setCreated] = useState(null);
   async function submit(e) {
     e.preventDefault(); setBusy(true); setError('');
     try {
-      const { temporary_password, totp_setup_secret, ...user } = await api.admin.createUser(form);
-      onCreated(user);
+      const { temporary_password, totp_setup_secret, ...user } = await api.admin.createUser({ ...form, name: form.name.trim(), email: form.email.trim(), area: form.area.trim() });
+      await onCreated(user);
       setCreated({ email: user.email, temporary_password, totp_setup_secret });
     } catch (err) { setError(err.message); }
     finally { setBusy(false); }
   }
   if (created) return <Modal title="Usuario creado" onClose={onClose}><div className="created-user-credentials"><p>Guarda estos datos ahora y entrégalos al usuario por un canal seguro. Se muestran una sola vez.</p><div><strong>Correo</strong><code>{created.email}</code></div><div><strong>Contraseña inicial</strong><code>{created.temporary_password}</code></div>{created.totp_setup_secret && <div><strong>Secreto para configurar 2FA</strong><code>{created.totp_setup_secret}</code><small>El usuario debe agregar este secreto a su aplicación de autenticación antes de iniciar sesión.</small></div>}<div className="modal-actions"><button type="button" className="btn btn-primary" onClick={onClose}>Ya guardé los datos</button></div></div></Modal>;
-  return <Modal title="Crear usuario" onClose={onClose}><form className="modal-form" onSubmit={submit}><label>Nombre completo<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required maxLength={120}/></label><label>Correo corporativo<input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required/></label><div className="form-grid"><label>Área<select value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })}><option>Finanzas</option><option>Ventas</option><option>RR. HH.</option><option>Logística</option><option>Tecnología</option></select></label><label>Rol<select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}><option value="worker">Trabajador</option><option value="manager">Gestor</option><option value="admin">Administrador</option></select></label></div><p className="form-note">Los roles Gestor y Administrador deberán completar 2FA antes de acceder al panel.</p>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Creando…' : 'Crear usuario'}</button></div></form></Modal>;
+  return <Modal title="Crear usuario" onClose={onClose}><form className="modal-form" onSubmit={submit}><label>Nombre completo<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required maxLength={120}/></label><label>Correo corporativo<input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required/></label><div className="form-grid"><label>Área<input list="admin-areas" value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} placeholder="Selecciona o escribe un área" required minLength={2} maxLength={100}/><datalist id="admin-areas">{areas.map((area) => <option key={area.name} value={area.name}/>)}</datalist></label><label>Rol<select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}><option value="worker">Trabajador</option><option value="manager">Gestor</option><option value="admin">Administrador</option></select></label></div><p className="form-note">Si el área no existe, se creará al guardar. Los roles Gestor y Administrador requieren configurar 2FA.</p>{error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button className="btn btn-primary" disabled={busy}>{busy ? 'Creando…' : 'Crear usuario'}</button></div></form></Modal>;
+}
+
+function AdminEditUserModal({ user, currentUserId, onClose, onSaved }) {
+  const [role, setRole] = useState(roleValue(user.role));
+  const [active, setActive] = useState(user.status === 'Activo');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const isSelf = Number(user.id) === Number(currentUserId);
+  const canPromote = user.twoFactor || roleValue(user.role) !== 'worker';
+  async function submit(e) {
+    e.preventDefault(); setBusy(true); setError('');
+    try { await api.admin.updateUser(user.id, { role, is_active: active }); await onSaved(); onClose(); }
+    catch (err) { setError(err.message || 'No se pudo guardar el usuario.'); }
+    finally { setBusy(false); }
+  }
+  return <Modal title={`Editar acceso de ${user.name}`} onClose={onClose}><form className="modal-form" onSubmit={submit}><p className="admin-hint">Nombre: {user.name}<br/>Correo: {user.email}<br/>Área: {user.area}</p><label>Rol<select value={role} onChange={(e) => setRole(e.target.value)} disabled={isSelf}><option value="worker">Trabajador</option><option value="manager" disabled={!canPromote}>Gestor</option><option value="admin" disabled={!canPromote}>Administrador</option></select></label>{!canPromote && <p className="admin-hint">Para asignar un rol con 2FA a esta cuenta, la API necesita ofrecer un proceso de configuración del autenticador. Por ahora, crea una cuenta nueva con ese rol.</p>}<label className="admin-checkbox"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} disabled={isSelf}/>Cuenta activa</label>{isSelf && <p className="admin-hint">No puedes cambiar tu propio rol ni desactivar tu cuenta desde este panel.</p>}<p className="admin-hint">La API todavía no permite modificar nombre, correo o área.</p>{error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button className="btn btn-primary" disabled={busy || (role === roleValue(user.role) && active === (user.status === 'Activo'))}>{busy ? 'Guardando…' : 'Guardar cambios'}</button></div></form></Modal>;
+}
+
+function AdminDeleteUserModal({ user, onClose, onDeleted }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function confirm() {
+    setBusy(true); setError('');
+    try { await api.admin.deleteUser(user.id); await onDeleted(); onClose(); }
+    catch (err) { setError(err.message || 'No se pudo eliminar el usuario.'); }
+    finally { setBusy(false); }
+  }
+  return <Modal title="Eliminar usuario" onClose={onClose}><p>Se eliminará la cuenta de <strong>{user.name}</strong> ({user.email}). Esta acción no se puede deshacer.</p>{error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button><button type="button" className="btn btn-danger" disabled={busy} onClick={confirm}>{busy ? 'Eliminando…' : 'Eliminar cuenta'}</button></div></Modal>;
 }
 
 function AuthenticatedApp() {
@@ -655,8 +706,9 @@ function AuthenticatedApp() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [modal, setModal] = useState(null);
+  const [notice, setNotice] = useState(null);
 
-  useEffect(() => { setView('inicio'); setData(null); setError(''); }, [user?.id]);
+  useEffect(() => { setView('inicio'); setData(null); setError(''); setNotice(null); }, [user?.id]);
   useEffect(() => {
     if (!user) return;
     let active = true; const loader = user.role === 'admin' ? api.admin.dashboard : user.role === 'manager' ? api.manager.dashboard : api.worker.dashboard;
@@ -669,11 +721,26 @@ function AuthenticatedApp() {
   if (!['worker', 'manager', 'admin'].includes(user.role)) return <div className="fatal-state"><h1>Acceso no autorizado</h1><p>Tu cuenta no tiene un rol válido asignado.</p></div>;
   if (!data && !error) return <LoadingScreen/>;
 
-  async function exportReport() { try { const blob = await api.admin.exportReport(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `inkasec-reporte-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url); } catch (err) { setError(err.message); } }
+  async function refreshAdmin(message) {
+    try { setData(await api.admin.dashboard()); setNotice({ type: 'success', message }); }
+    catch (err) { setNotice({ type: 'error', message: `El cambio se guardó, pero no se pudo actualizar el panel: ${err.message}` }); }
+  }
 
-  const content = error ? <div className="fatal-state inside"><h2>No pudimos cargar esta sección</h2><p>{error}</p><button className="btn btn-secondary" onClick={() => window.location.reload()}>Reintentar</button></div> : user.role === 'admin' ? <AdminViews data={data} view={view} onCreateUser={() => setModal('user')} onExport={exportReport}/> : user.role === 'manager' ? <ManagerViews data={data} view={view} onCreate={() => setModal('content')}/> : <WorkerViews data={data} view={view} setView={setView}/>;
+  async function exportReport() {
+    try {
+      const blob = await api.admin.exportReport();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `inkasec-usuarios-por-area-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice({ type: 'success', message: 'Se descargó el CSV de usuarios por área.' });
+    } catch (err) { setNotice({ type: 'error', message: err.message || 'No se pudo exportar el CSV.' }); }
+  }
 
-  return <InkaSecLayout activeView={view} onViewChange={setView} notifications={data?.notifications || []}><div className="inka-page-shell">{content}</div>{modal === 'content' && <ManagerCreateModal onClose={() => setModal(null)} onCreated={(item) => setData((prev) => ({ ...prev, content: [item, ...prev.content] }))}/>} {modal === 'user' && <AdminCreateUserModal onClose={() => setModal(null)} onCreated={(item) => setData((prev) => ({ ...prev, users: [item, ...prev.users] }))}/>}</InkaSecLayout>;
+  const content = error ? <div className="fatal-state inside"><h2>No pudimos cargar esta sección</h2><p>{error}</p><button className="btn btn-secondary" onClick={() => window.location.reload()}>Reintentar</button></div> : user.role === 'admin' ? <AdminViews data={data} view={view} onCreateUser={() => setModal('user')} onExport={exportReport} onEditUser={(item) => setModal({ type: 'edit', user: item })} onDeleteUser={(item) => setModal({ type: 'delete', user: item })} currentUserId={user.id} notice={notice}/> : user.role === 'manager' ? <ManagerViews data={data} view={view} onCreate={() => setModal('content')}/> : <WorkerViews data={data} view={view} setView={setView}/>;
+
+  return <InkaSecLayout activeView={view} onViewChange={setView} notifications={data?.notifications || []}><div className="inka-page-shell">{content}</div>{modal === 'content' && <ManagerCreateModal onClose={() => setModal(null)} onCreated={(item) => setData((prev) => ({ ...prev, content: [item, ...prev.content] }))}/>} {modal === 'user' && <AdminCreateUserModal onClose={() => setModal(null)} areas={data?.areas || []} onCreated={() => refreshAdmin('Usuario creado correctamente.')}/>} {modal?.type === 'edit' && <AdminEditUserModal user={modal.user} currentUserId={user.id} onClose={() => setModal(null)} onSaved={() => refreshAdmin('Acceso actualizado correctamente.')}/>} {modal?.type === 'delete' && <AdminDeleteUserModal user={modal.user} onClose={() => setModal(null)} onDeleted={() => refreshAdmin('Usuario eliminado correctamente.')}/>}</InkaSecLayout>;
 }
 
 export default function App() { return <AuthProvider><AuthenticatedApp/></AuthProvider>; }

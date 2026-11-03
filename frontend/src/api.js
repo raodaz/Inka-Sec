@@ -41,10 +41,12 @@ async function request(path, options = {}) {
   const data = contentType.includes('application/json') ? await response.json() : null;
 
   if (!response.ok) {
+    const detail = Array.isArray(data?.detail)
+      ? data.detail.map((issue) => issue.msg).join(' ') : data?.detail;
     const safeMessage =
       response.status === 401
         ? 'La sesión no es válida o ha expirado.'
-        : data?.detail || data?.message || 'No se pudo completar la solicitud.';
+        : detail || data?.message || 'No se pudo completar la solicitud.';
     throw new ApiError(safeMessage, response.status, data);
   }
 
@@ -90,6 +92,8 @@ export const api = {
   admin: {
     dashboard: () => request('/admin/dashboard'),
     createUser: (payload) => request('/admin/users', { method: 'POST', body: payload }),
+    updateUser: (id, payload) => request(`/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: payload }),
+    deleteUser: (id) => request(`/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     exportReport: async () => {
       const csrf = getCookie('inka_csrf');
       const response = await fetch(`${API_BASE_URL}/admin/reports/export`, {
