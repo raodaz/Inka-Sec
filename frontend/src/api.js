@@ -44,7 +44,7 @@ async function request(path, options = {}) {
     const detail = Array.isArray(data?.detail)
       ? data.detail.map((issue) => issue.msg).join(' ') : data?.detail;
     const safeMessage =
-      response.status === 401
+      response.status === 401 && !['/auth/login', '/auth/2fa/verify'].includes(path)
         ? 'La sesión no es válida o ha expirado.'
         : detail || data?.message || 'No se pudo completar la solicitud.';
     throw new ApiError(safeMessage, response.status, data);
