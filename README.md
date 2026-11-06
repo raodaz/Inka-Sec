@@ -53,3 +53,7 @@ Si ejecutas también la API en Docker, usa `docker compose up -d --build db back
 El administrador dispone de URLs que se pueden abrir y recargar directamente: `/admin`, `/admin/usuarios`, `/admin/areas`, `/admin/auditoria` y `/admin/reportes`. Cada sección consulta su propio recurso de la API (`/api/v1/admin/dashboard`, `/users`, `/areas`, `/audit` y `/reports/summary`). En «Áreas y roles» se crean áreas por separado; los usuarios se crean en «Usuarios». La auditoría permite buscar y recorrer páginas de 20 eventos. El avance del reporte es el promedio de los módulos que ya tienen un registro de progreso, por lo que no equivale al cumplimiento de todas las asignaciones.
 
 La ruta `http://localhost:5173/?preview=admin` muestra únicamente datos de ejemplo para revisar el diseño.
+
+## Pipeline de GitHub Actions
+
+Las pruebas del backend y Bandit se ejecutan en los pull requests hacia `main` y en cada push a `main`. Los despliegues en Render son opcionales: para activar el entorno de desarrollo, configura la variable del repositorio `RENDER_DEV_ENABLED=true`, el secreto `RENDER_DEV_HOOK` y la variable `RENDER_DEV_URL`. Para permitir el despliegue a producción después del chequeo de desarrollo, configura además `RENDER_PROD_ENABLED=true` y el secreto `RENDER_PROD_HOOK`. Sin estas variables de activación, los trabajos de despliegue se omiten y las pruebas siguen funcionando. Antes de activar producción, configura una aprobación obligatoria para el entorno en GitHub.

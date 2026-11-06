@@ -46,7 +46,7 @@ jobs:
     name: Deploy a Desarrollo
     needs: backend
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.RENDER_DEV_ENABLED == 'true'
 
     steps:
       - name: Deploy a Dev en Render
@@ -84,6 +84,7 @@ jobs:
     name: Deploy a Producción
     needs: smoke-test
     runs-on: ubuntu-latest
+    if: vars.RENDER_PROD_ENABLED == 'true'
 
     steps:
       - name: Deploy a Prod en Render
