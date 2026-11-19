@@ -1,6 +1,6 @@
 # Inka-Sec
 
-Bienvenidos a Inka-Sec, una aplicación web pensada para fortalecer el conocimiento básico de ciberseguridad en empresas del Perú.
+Bienvenidos, una aplicación web pensada para fortalecer el conocimiento básico de ciberseguridad en empresas del Perú.
 
 InkaSec combina **módulos cortos en lenguaje sencillo**, **retos prácticos basados en situaciones reales del trabajo** y un **control de acceso por roles (RBAC)**, para que cada empresa capacite a su personal y mida su avance con indicadores concretos: porcentaje de módulos aprobados, desempeño en retos y temas con más errores.
 
