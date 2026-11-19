@@ -231,9 +231,20 @@ Pipeline en GitHub Actions (`.github/workflows/ci.yml`), con permisos mínimos y
 
 1. **Backend**: pruebas con pytest y SAST con Bandit.
 2. **Frontend**: lint, build y `npm audit` de dependencias de producción (falla con severidad alta o crítica).
-3. **Deploy a Dev** en Render (solo en `push` a `main` y solo si los dos jobs anteriores pasan).
-4. **Smoke test**: espera a que `/api/v1/health` responda 200 (verifica también la conexión a la BD).
-5. **Deploy a Producción**: solo si la variable `RENDER_PROD_ENABLED` es `true`.
+3. **Deploy a Dev** en Render: solicita el despliegue del backend y del frontend tras un `push` a `main` si pasan ambos jobs de CI.
+4. **Smoke test**: consulta `/api/v1/health` desde el dominio del frontend de desarrollo y comprueba que el JSON confirme la conexión a la API y a la base de datos.
+5. **Deploy a Producción**: solicita ambos despliegues si el smoke test pasa y `RENDER_PROD_ENABLED` es `true`.
+
+En GitHub, abre **Settings → Secrets and variables → Actions → Secrets** y guarda la URL completa de **Deploy Hook** de cada servicio de Render.
+
+| Servicio de Render | Secreto de GitHub Actions |
+| --- | --- |
+| Backend de desarrollo | `RENDER_DEV_BACKEND_HOOK` |
+| Frontend de desarrollo | `RENDER_DEV_FRONTEND_HOOK` |
+| Backend de producción | `RENDER_PROD_BACKEND_HOOK` |
+| Frontend de producción | `RENDER_PROD_FRONTEND_HOOK` |
+
+En **Actions → Variables**, configura `RENDER_DEV_FRONTEND_URL` con la URL pública del frontend de desarrollo y `RENDER_PROD_ENABLED` con `true` cuando quieras habilitar producción. Si GitHub Actions controlará los despliegues, desactiva **Auto-Deploy** en los cuatro servicios de Render para evitar despliegues al margen del pipeline.
 
 > En Render configura `APP_ENV=production`, `COOKIE_SECURE=true`, `TRUSTED_PROXY_HOPS=1`, `SEED_DEMO_DATA=false` y un `JWT_SECRET_KEY` propio de 32 caracteres o más.
 
